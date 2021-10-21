@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -43,6 +45,33 @@ func NewDownloader(downLimit int64, maxTries int, progress aptly.Progress) aptly
 	transport.TLSHandshakeTimeout = http.DefaultTransport.(*http.Transport).TLSHandshakeTimeout
 	transport.ExpectContinueTimeout = http.DefaultTransport.(*http.Transport).ExpectContinueTimeout
 	transport.DisableCompression = true
+
+	certFile := os.Getenv("APTLY_SSL_CERT_LOCATION")
+	keyFile := os.Getenv("APTLY_SSL_KEY_LOCATION")
+	ca := os.Getenv("APTLY_SSL_CA_LOCATION")
+
+	if certFile != "" && keyFile != "" && ca != "" {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			panic(err)
+		}
+
+		caCert, err := os.ReadFile(ca)
+		if err != nil {
+			panic(err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			RootCAs:      caCertPool,
+		}
+		tlsConfig.BuildNameToCertificate()
+		transport.TLSClientConfig = tlsConfig
+	}
+
 	initTransport(&transport)
 	transport.RegisterProtocol("ftp", &protocol.FTPRoundTripper{})
 
